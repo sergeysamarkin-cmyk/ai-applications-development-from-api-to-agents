@@ -5,49 +5,79 @@ from fastmcp import FastMCP
 from commons.user_service.client import UserServiceClient
 from commons.user_service.user_info import UserSearchRequest, UserCreate, UserUpdate
 
-#TODO:
-# 1. Create instance of FastMCP as `mcp` (or another name if you wish) with:
-#       - name is "users-management-mcp-server"
-#    (host and port are not set here, they are passed to `mcp.run()` in `http_server.py`)
-# 2. Create UserServiceClient
+# host and port are not set here, they are passed to `mcp.run()` in `http_server.py`
+mcp = FastMCP(name="users-management-mcp-server")
+user_client = UserServiceClient()
 
 
 # ==================== TOOLS ====================
-#TODO:
-# You need to add all the tools here. You will need to create 5 async methods and mark them as @mcp.tool() (if you
-# named FastMCP not as `mcp` then use the name that you have used). All tools return `str`.
-# Don't forget about tool description, it will LLM to identify when some particular tool should be used.
-# https://gofastmcp.com/servers/tools
-# ---
-# Tools:
-# 1. `get_user_by_id`:-
-# 2. `delete_user`:-
-# 3. `search_user`:-
-# 4. `add_user`:-
-# 5. `update_user`:-
+
+@mcp.tool(
+    name="get_user_by_id",
+    description="Provides full user information by the numeric user ID. Use it when the ID of the user is known."
+)
+async def get_user_by_id(user_id: int) -> str:
+    return user_client.get_user(user_id)
+
+
+@mcp.tool(
+    name="delete_user",
+    description="Deletes a user by the numeric user ID. The deletion cannot be undone, so use it only when the user "
+                "explicitly asked for it."
+)
+async def delete_user(user_id: int) -> str:
+    return user_client.delete_user(user_id)
+
+
+@mcp.tool(
+    name="search_user",
+    description="Searches users by name, surname, email or gender. All filters are optional and can be combined. "
+                "Use it to find user IDs and to check whether a user already exists."
+)
+async def search_user(search_request: UserSearchRequest) -> str:
+    return user_client.search_users(**search_request.model_dump())
+
+
+@mcp.tool(
+    name="add_user",
+    description="Creates a new user. Required fields: name, surname, email, about_me. Other fields are optional."
+)
+async def add_user(user_create_model: UserCreate) -> str:
+    return user_client.add_user(user_create_model)
+
+
+@mcp.tool(
+    name="update_user",
+    description="Updates an existing user by the numeric user ID. Pass only the fields that should be changed."
+)
+async def update_user(user_id: int, user_update_model: UserUpdate) -> str:
+    return user_client.update_user(user_id, user_update_model)
+
 
 # ==================== MCP RESOURCES ====================
 
-#TODO:
-# Provides screenshot with Swagger endpoints of User Service. We need for the case to show you that MCP servers can
-# provide some static resources.
-# https://gofastmcp.com/servers/resources
-# ---
-# 1. Create async method `get_flow_diagram` that returns bytes and mark as `@mcp.resource` with:
-#   - uri = "users-management://flow-diagram"
-#   - mime_type="image/png"
-# 2. You need to get `flow.png` picture from `mcp_server` folder and return it as bytes.
-# 3. Don't forget to provide resource description
+FLOW_DIAGRAM_PATH = Path(__file__).parent / "flow.png"
+
+
+@mcp.resource(
+    uri="users-management://flow-diagram",
+    mime_type="image/png",
+    description="Diagram of the flow between the Agent, the MCP server and the User Service. It is an example of a "
+                "static resource that an MCP server can provide."
+)
+async def get_flow_diagram() -> bytes:
+    return FLOW_DIAGRAM_PATH.read_bytes()
 
 
 # ==================== MCP PROMPTS ====================
 
-#TODO:
-# Provides static prompts that can be used by Clients
-# https://gofastmcp.com/servers/prompts
-# ---
-# Prompts are prepared, you need just properly return them and provide descriptions of them"
-"""
+@mcp.prompt(
+    name="user_search_prompt",
+    description="Guides the search through the user database: searchable fields, partial matching and effective "
+                "search combinations."
+)
+async def user_search_prompt() -> str:
+    return """
 You are helping users search through a dynamic user database. The database contains 
 realistic synthetic user profiles with the following searchable fields:
 
@@ -97,8 +127,14 @@ When helping users search, suggest multiple search strategies and explain
 why certain approaches might be more effective for their goals.
 """
 
-# Guides creation of realistic user profiles
-"""
+
+@mcp.prompt(
+    name="user_profile_creation_prompt",
+    description="Guides the creation of realistic user profiles: required and optional fields, formats, address and "
+                "credit card guidelines, biography templates."
+)
+async def user_profile_creation_prompt() -> str:
+    return """
 You are helping create realistic user profiles for the system. Follow these guidelines 
 to ensure data consistency and realism.
 
@@ -168,4 +204,3 @@ When creating profiles, aim for diversity in:
 - Socioeconomic backgrounds
 - Cultural backgrounds
 """
-
