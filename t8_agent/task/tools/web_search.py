@@ -14,22 +14,46 @@ class WebSearchTool(BaseTool):
 
     @property
     def name(self) -> str:
-        #TODO: Provide tool name as `web_search_tool`
-        raise NotImplementedError()
+        return "web_search_tool"
 
     @property
     def description(self) -> str:
-        #TODO: Provide description of this tool
-        raise NotImplementedError()
+        return (
+            "Tool for WEB searching. Use it to find public information about a person or a topic, "
+            "for example to fill in missing details of a new user profile."
+        )
 
     @property
     def input_schema(self) -> dict[str, Any]:
-        #TODO: Provide tool params Schema (it applies `request` string to search by)
-        raise NotImplementedError()
+        return {
+            "type": "object",
+            "properties": {
+                "request": {
+                    "type": "string",
+                    "description": "The search query or question to search for on the web",
+                }
+            },
+            "required": ["request"],
+        }
 
     def execute(self, arguments: dict[str, Any]) -> str:
-        #TODO:
-        # https://developers.openai.com/api/docs/guides/tools-web-search
-        # 1. Make POST call to `OPENAI_TERRA_MODEL` with request "tools": [{"type": "web_search"}],
-        # 4. Check if response status is 200 and if yes then return message content, otherwise return `f"Error: {response.status_code} {response.text}"`
-        raise NotImplementedError()
+        headers = {
+            "Authorization": self.__api_key,
+            "Content-Type": "application/json",
+        }
+        request_data = {
+            "model": OPENAI_TERRA_MODEL,
+            "input": arguments["request"],
+            "tools": [{"type": "web_search"}],
+        }
+        response = requests.post(url=self.__endpoint, headers=headers, json=request_data)
+
+        if response.status_code == 200:
+            data = response.json()
+            for item in data.get("output", []):
+                if item.get("type") == "message":
+                    for block in item.get("content", []):
+                        if block.get("type") == "output_text":
+                            return block.get("text", "")
+            return data.get("output_text", "") or "Web search returned no text."
+        return f"Error: {response.status_code} {response.text}"
