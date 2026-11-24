@@ -69,7 +69,8 @@ class StdioMcpClient(BaseMcpClient):
             McpToolModel(
                 name=tool.name,
                 description=tool.description,
-                parameters=tool.inputSchema,
+                # mcp 2.x: input_schema, mcp 1.x: inputSchema
+                parameters=getattr(tool, "input_schema", None) or tool.inputSchema,
             )
             for tool in tools_result.tools
         ]
