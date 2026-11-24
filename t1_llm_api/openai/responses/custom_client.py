@@ -16,6 +16,10 @@ class CustomOpenAIResponsesClient(BaseOpenAIClient):
     and handle its unique event-based streaming format.
     """
 
+    @staticmethod
+    def _prepare_input(messages: list[Message]) -> list[dict]:
+        return [{"role": m.role.value, "content": m.content} for m in messages]
+
     def response(self, messages: list[Message], **kwargs) -> Message:
         """
         Get a synchronous response using raw HTTP POST request.
@@ -35,15 +39,32 @@ class CustomOpenAIResponsesClient(BaseOpenAIClient):
             Uses the Responses API format with 'instructions' and 'input' parameters.
             The response is printed to stdout before being returned.
         """
-        #TODO:
-        # https://developers.openai.com/api/docs/guides/text?lang=curl
-        # - Prepare headers with authorization and content type
-        # - Prepare input messages
-        # - Execute post request to AI API (use `requests`)
-        # - Parse response
-        # - Print response to console
-        # - Return ASSISTANT message
-        raise NotImplementedError
+        headers = {
+            "Authorization": self._api_key,
+            "Content-Type": "application/json",
+        }
+        request_data = {
+            "model": self._model_name,
+            "instructions": self._system_prompt,
+            "input": self._prepare_input(messages),
+        }
+
+        resp = requests.post(self._endpoint, headers=headers, json=request_data)
+        if resp.status_code != 200:
+            raise Exception(f"HTTP {resp.status_code}: {resp.text}")
+
+        texts = []
+        for item in resp.json().get("output", []):
+            if item.get("type") == "message":
+                for part in item.get("content", []):
+                    if part.get("type") == "output_text":
+                        texts.append(part.get("text", ""))
+        if not texts:
+            raise ValueError("No output text in response found")
+
+        content = "".join(texts)
+        print(content)
+        return Message(Role.ASSISTANT, content)
 
     async def stream_response(self, messages: list[Message], **kwargs) -> Message:
         """
@@ -64,13 +85,37 @@ class CustomOpenAIResponsesClient(BaseOpenAIClient):
             Listens for 'response.output_text.delta' events to build the response.
             Each line with "event: " specifies the event type, followed by "data: " with the payload.
         """
-        #TODO:
-        # https://developers.openai.com/api/docs/guides/text?lang=curl
-        # - Prepare headers with authorization and content type
-        # - Prepare input messages
-        # - Execute post request to AI API (use `aiohttp`)
-        # - Handle stream with events
-        # - Parse response
-        # - Print chunks to console
-        # - Return ASSISTANT message
-        raise NotImplementedError
+        headers = {
+            "Authorization": self._api_key,
+            "Content-Type": "application/json",
+        }
+        request_data = {
+            "model": self._model_name,
+            "instructions": self._system_prompt,
+            "input": self._prepare_input(messages),
+            "stream": True,
+        }
+
+        contents = []
+        async with aiohttp.ClientSession() as session:
+            async with session.post(self._endpoint, headers=headers, json=request_data) as resp:
+                if resp.status != 200:
+                    raise Exception(f"HTTP {resp.status}: {await resp.text()}")
+
+                event_type = None
+                async for raw_line in resp.content:
+                    line = raw_line.decode("utf-8").strip()
+                    if line.startswith("event: "):
+                        event_type = line[len("event: "):]
+                    elif line.startswith("data: "):
+                        payload = json.loads(line[len("data: "):])
+                        # Errors can arrive inside a 200 stream, so check them explicitly
+                        if event_type in ("error", "response.failed"):
+                            raise Exception(f"Stream error: {payload}")
+                        if event_type == "response.output_text.delta":
+                            delta = payload.get("delta", "")
+                            if delta:
+                                print(delta, end="", flush=True)
+                                contents.append(delta)
+        print()
+        return Message(Role.ASSISTANT, "".join(contents))

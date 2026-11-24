@@ -16,6 +16,33 @@ class CustomGeminiAIClient(AIClient):
     and handle its Server-Sent Events (SSE) streaming format.
     """
 
+    def _headers(self) -> dict:
+        return {
+            "x-goog-api-key": self._api_key,
+            "Content-Type": "application/json",
+        }
+
+    def _request_data(self, messages: list[Message], **kwargs) -> dict:
+        data = {
+            "system_instruction": {"parts": [{"text": self._system_prompt}]},
+            # Gemini roles are only "user" and "model"
+            "contents": [
+                {
+                    "role": "model" if m.role == Role.ASSISTANT else "user",
+                    "parts": [{"text": m.content}],
+                }
+                for m in messages
+            ],
+        }
+        if "max_tokens" in kwargs:
+            data["generationConfig"] = {"maxOutputTokens": kwargs["max_tokens"]}
+        return data
+
+    @staticmethod
+    def _extract_text(candidates: list[dict]) -> str:
+        parts = candidates[0].get("content", {}).get("parts", [])
+        return "".join(p.get("text", "") for p in parts if not p.get("thought"))
+
     def response(self, messages: list[Message], **kwargs) -> Message:
         """
         Get a synchronous response using raw HTTP POST request.
@@ -36,15 +63,19 @@ class CustomGeminiAIClient(AIClient):
             Uses 'x-goog-api-key' header for authentication.
             Response candidates contain content parts that are concatenated.
         """
-        #TODO:
-        # https://ai.google.dev/gemini-api/docs/text-generation
-        # - Prepare headers with api key and content type
-        # - Add System prompt
-        # - Execute post request to AI API (use `requests`)
-        # - Parse response
-        # - Print response to console
-        # - Return ASSISTANT message
-        raise NotImplementedError
+        url = f"{self._endpoint}/{self._model_name}:generateContent"
+
+        resp = requests.post(url, headers=self._headers(), json=self._request_data(messages, **kwargs))
+        if resp.status_code != 200:
+            raise Exception(f"HTTP {resp.status_code}: {resp.text}")
+
+        candidates = resp.json().get("candidates")
+        if not candidates:
+            raise ValueError("No candidates in response found")
+
+        content = self._extract_text(candidates)
+        print(content)
+        return Message(Role.ASSISTANT, content)
 
     async def stream_response(self, messages: list[Message], **kwargs) -> Message:
         """
@@ -66,13 +97,24 @@ class CustomGeminiAIClient(AIClient):
             Each SSE chunk contains candidates with content parts.
             Each text chunk is printed to stdout as it arrives.
         """
-        #TODO:
-        # https://ai.google.dev/gemini-api/docs/text-generation
-        # - Prepare headers with api key and content type
-        # - Add System prompt
-        # - Execute post request to AI API (use `aiohttp`)
-        # - Handle stream with chunks
-        # - Parse response
-        # - Print chunks to console
-        # - Return ASSISTANT message
-        raise NotImplementedError
+        url = f"{self._endpoint}/{self._model_name}:streamGenerateContent?alt=sse"
+
+        contents = []
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=self._headers(), json=self._request_data(messages, **kwargs)) as resp:
+                if resp.status != 200:
+                    raise Exception(f"HTTP {resp.status}: {await resp.text()}")
+
+                async for raw_line in resp.content:
+                    line = raw_line.decode("utf-8").strip()
+                    if not line.startswith("data: "):
+                        continue
+                    chunk = json.loads(line[len("data: "):])
+                    candidates = chunk.get("candidates")
+                    if candidates:
+                        text = self._extract_text(candidates)
+                        if text:
+                            print(text, end="", flush=True)
+                            contents.append(text)
+        print()
+        return Message(Role.ASSISTANT, "".join(contents))
