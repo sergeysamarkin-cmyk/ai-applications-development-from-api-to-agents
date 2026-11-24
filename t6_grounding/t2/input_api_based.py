@@ -7,28 +7,30 @@ from pydantic import BaseModel, Field
 from commons.constants import OPENAI_API_KEY, OPENAI_LUNA_MODEL
 from t6_grounding.user_service_client import UserServiceClient
 
-#TODO:
-# Define QUERY_ANALYSIS_PROMPT - instructs the LLM to act as a query analysis system:
-#   - Available search fields: name, surname, email
-#   - Analyze the user question and extract explicit search values
-#   - Map extracted values to the appropriate search fields
-#   - Only extract values that are clearly stated - do not infer or assume
-#   - Include examples: "Who is John?" → name: "John", "Find John Smith" → name: "John", surname: "Smith"
-QUERY_ANALYSIS_PROMPT = None
+QUERY_ANALYSIS_PROMPT = """You are a query analysis system for a user database.
+Available search fields: name, surname, email.
+- Analyze the user question and extract explicit search values
+- Map extracted values to the appropriate search fields
+- Only extract values that are clearly stated - do not infer or assume
+- Examples:
+  "Who is John?" -> name: "John"
+  "Find John Smith" -> name: "John", surname: "Smith"
+  "Find users with surname Adams" -> surname: "Adams"
+- If no search values are stated, return an empty list
+"""
 
-#TODO:
-# Define SYSTEM_PROMPT - instructs the LLM to act as a RAG-powered assistant:
-#   - The user message contains two sections: RAG CONTEXT and USER QUESTION
-#   - Answer ONLY based on the provided RAG CONTEXT and conversation history
-#   - If no relevant information exists in RAG CONTEXT, state that the question cannot be answered
-#   - Format user information clearly when presenting it
-SYSTEM_PROMPT = None
+SYSTEM_PROMPT = """You are a RAG-powered assistant that answers questions about users.
+The user message contains two sections: RAG CONTEXT and USER QUESTION.
+- Answer ONLY based on the provided RAG CONTEXT
+- If there is no relevant information in RAG CONTEXT, say that the question cannot be answered
+- Format user information clearly when presenting it
+"""
 
-#TODO:
-# Define USER_PROMPT template with two placeholders:
-#   - {context} - the retrieved user data formatted as text
-#   - {query}   - the user's original question
-USER_PROMPT = None
+USER_PROMPT = """##RAG CONTEXT:
+{context}
+
+##USER QUESTION:
+{query}"""
 
 
 class SearchField(StrEnum):
@@ -55,35 +57,53 @@ user_client = UserServiceClient()
 
 
 def retrieve_context(user_question: str) -> list[dict[str, Any]]:
-    #TODO:
-    # - Build a messages list with QUERY_ANALYSIS_PROMPT as system and user_question as user
-    # - Call llm_client.beta.chat.completions.parse with:
-    #   - model=OPENAI_LUNA_MODEL, temperature=0.0, reasoning_effort="none"
-    #   - response_format=SearchRequests
-    # - Extract search_request_parameters from the parsed response
-    # - If parameters exist:
-    #   - Build a dict mapping search_field.value → search_value for each parameter
-    #   - Print "Searching with parameters: {dict}"
-    #   - Return user_client.search_users(**dict)
-    # - If no parameters found, print "No specific search parameters found!" and return []
-    raise NotImplementedError
+    messages = [
+        {"role": "system", "content": QUERY_ANALYSIS_PROMPT},
+        {"role": "user", "content": user_question},
+    ]
+    response = llm_client.beta.chat.completions.parse(
+        model=OPENAI_LUNA_MODEL,
+        temperature=0.0,
+        reasoning_effort="none",
+        messages=messages,
+        response_format=SearchRequests,
+    )
+    parameters = response.choices[0].message.parsed.search_request_parameters
+
+    if parameters:
+        search_params = {param.search_field.value: param.search_value for param in parameters}
+        print(f"Searching with parameters: {search_params}")
+        return user_client.search_users(**search_params)
+
+    print("No specific search parameters found!")
+    return []
 
 
 def augment_prompt(user_question: str, context: list[dict[str, Any]]) -> str:
-    #TODO:
-    # - Format each user in context as a "User:\n  key: value\n" block (with blank line after each)
-    # - Insert the formatted string into USER_PROMPT using .format(context=..., query=user_question)
-    # - Print the augmented prompt
-    # - Return the augmented prompt string
-    raise NotImplementedError
+    context_text = ""
+    for user in context:
+        context_text += "User:\n"
+        for key, value in user.items():
+            context_text += f"  {key}: {value}\n"
+        context_text += "\n"
+
+    augmented = USER_PROMPT.format(context=context_text, query=user_question)
+    print(augmented)
+    return augmented
 
 
 def generate_answer(augmented_prompt: str) -> str:
-    #TODO:
-    # - Build a messages list with SYSTEM_PROMPT as system and augmented_prompt as user
-    # - Call llm_client.chat.completions.create with model=OPENAI_LUNA_MODEL, temperature=0.0, reasoning_effort="none"
-    # - Return the response content string (default to "" if None)
-    raise NotImplementedError
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": augmented_prompt},
+    ]
+    response = llm_client.chat.completions.create(
+        model=OPENAI_LUNA_MODEL,
+        temperature=0.0,
+        reasoning_effort="none",
+        messages=messages,
+    )
+    return response.choices[0].message.content or ""
 
 
 def main():
@@ -99,16 +119,16 @@ def main():
             if user_question.lower() in ['quit', 'exit']:
                 break
 
-            #TODO:
-            # - Print "\n--- Retrieving context ---"
-            # - Call retrieve_context(user_question) and store in context
-            # - If context is not empty:
-            #   - Print "\n--- Augmenting prompt ---"
-            #   - Call augment_prompt(user_question, context) and store in augmented_prompt
-            #   - Print "\n--- Generating answer ---"
-            #   - Call generate_answer(augmented_prompt), print "\nAnswer: {answer}\n"
-            # - Otherwise: print "\n--- No relevant information found ---"
-            raise NotImplementedError
+            print("\n--- Retrieving context ---")
+            context = retrieve_context(user_question)
+            if context:
+                print("\n--- Augmenting prompt ---")
+                augmented_prompt = augment_prompt(user_question, context)
+                print("\n--- Generating answer ---")
+                answer = generate_answer(augmented_prompt)
+                print(f"\nAnswer: {answer}\n")
+            else:
+                print("\n--- No relevant information found ---")
 
 
 if __name__ == "__main__":
