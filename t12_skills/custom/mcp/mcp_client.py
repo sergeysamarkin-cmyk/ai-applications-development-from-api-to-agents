@@ -31,7 +31,9 @@ class T12MCPClient:
 
         # Create streams context
         self._streams_context = streamable_http_client(self.server_url)
-        read_stream, write_stream, _ = await self._streams_context.__aenter__()
+        # mcp 1.x yields (read, write, get_session_id); mcp 2.x (pinned in requirements.txt) yields (read, write)
+        streams = await self._streams_context.__aenter__()
+        read_stream, write_stream = streams[0], streams[1]
 
         # Create session context
         self._session_context = ClientSession(read_stream, write_stream)
@@ -58,7 +60,8 @@ class T12MCPClient:
             MCPToolModel(
                 name=tool.name,
                 description=tool.description,
-                parameters=tool.inputSchema,
+                # mcp 2.x uses input_schema, mcp 1.x uses inputSchema
+                parameters=getattr(tool, "input_schema", None) or tool.inputSchema,
             )
             for tool in tools.tools
         ]

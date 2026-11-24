@@ -66,15 +66,33 @@ async def main():
     system_prompt = build_system_prompt(skills)
     print(f"📄 System prompt: \n {system_prompt}")
 
-    #TODO:
-    # - Initialize the messages list with a SYSTEM message containing the system_prompt
-    # - Build the tools list:
-    #   - ReadSkillTool (pass SKILLS_DIR)
-    #   - PythonCodeInterpreterTool (use async factory .create() with MCP_URL, MCP_TOOL_NAME, SKILLS_DIR)
-    # - Create a T12Agent with an OpenAI client, model OPENAI_TERRA_MODEL, and the tools list
-    # - Run a chat loop: read user input, break on "exit",
-    #   append USER message, call agent.chat_completion, append the returned assistant message
-    raise NotImplementedError()
+    messages: list[Message] = [Message(role=Role.SYSTEM, content=system_prompt)]
+
+    code_tool = await PythonCodeInterpreterTool.create(MCP_URL, MCP_TOOL_NAME, SKILLS_DIR)
+    try:
+        tools: list[BaseTool] = [
+            ReadSkillTool(SKILLS_DIR),
+            code_tool,
+        ]
+        agent = T12Agent(
+            client=OpenAI(api_key=OPENAI_API_KEY),
+            model=OPENAI_TERRA_MODEL,
+            tools=tools,
+        )
+
+        print("\nConvertor Agent is ready. Ask it to convert any value. Type 'exit' to quit.")
+        while True:
+            user_input = input("\n> ").strip()
+            if user_input.lower() == "exit":
+                break
+            if not user_input:
+                continue
+
+            messages.append(Message(role=Role.USER, content=user_input))
+            ai_message = await agent.chat_completion(messages)
+            messages.append(ai_message)
+    finally:
+        await code_tool._mcp_client.close()
 
 
 if __name__ == "__main__":

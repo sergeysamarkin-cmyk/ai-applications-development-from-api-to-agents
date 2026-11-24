@@ -1,29 +1,52 @@
 ---
 name: calculator
-description: >
-    # TODO:
-    # Write a 2-3 sentence description of what this skill does and when the agent should use it.
-    # Cover: what types of calculations it handles, what operations are supported,
-    # and what user requests should trigger this skill (e.g. calculate, compute, evaluate, solve, etc.).
+description: Safely evaluates math expressions with the calculator script. Use it when the user asks to calculate, compute, evaluate, or solve arithmetic, powers, roots, logarithms, trigonometry, or expressions with pi and e. Do not compute such results in your head.
 ---
 
 # Calculator Skill
 
-<!--
-TODO: Fill in this SKILL.md with instructions telling the AI agent how to use the calculator skill.
-The script is already implemented at scripts/calculate.py — study it to understand what it does.
-
-Your SKILL.md should include the following sections:
-
 ## Quick Start
-Provide the shell command to run the script.
-Hint: the script takes an expression as a command-line argument:
-  python /skills/calculator/scripts/calculate.py "<expression>"
+
+Run the script from the shell with the whole expression in double quotes:
+
+```
+python /skills/calculator/scripts/calculate.py "<expression>"
+```
+
+Example:
+
+```
+python /skills/calculator/scripts/calculate.py "(144 * 3) + sqrt(256) - 2^8"
+```
 
 ## Supported Operations
-List all supported operations (read calculate.py to discover them):
-Arithmetic, Power / exponentiation, Square, Floor division and modulo operators, Trigonometric functions, Mathematical constants, Grouping with parentheses
+
+- Arithmetic: `+`, `-`, `*`, `/`
+- Floor division and modulo: `//`, `%`
+- Power / exponentiation: `^` or `**` (the script converts `^` to `**`)
+- Square root: `sqrt(x)`
+- Trigonometric functions: `sin(x)`, `cos(x)`, `tan(x)` (angles in radians)
+- Logarithms: `log(x)` (natural), `log10(x)`
+- Other functions: `abs(x)`, `round(x)`, `floor(x)`, `ceil(x)`
+- Constants: `pi`, `e`
+- Grouping with parentheses
+
+Anything else (variables, imports, other functions) is rejected by the script.
 
 ## Workflow
-Step-by-step instructions for the agent
--->
+
+1. Take the math from the user request and write it as one expression. Use `^` or `**` for powers and `pi` for π.
+2. Run the script with the expression in double quotes, as shown in Quick Start.
+3. Read the output:
+   - `Result: <value>` means success. Report the value to the user, and show the expression you calculated.
+   - `Error: ...` means the expression is invalid or unsupported. Explain the problem and ask the user for a corrected expression.
+   - Division by zero is reported as an error. Say so clearly instead of guessing a value.
+4. Do not change the script output. Return the result as it is, with the expression.
+
+## Examples
+
+| User request                 | Expression to run             | Expected result (approx.) |
+|------------------------------|-------------------------------|---------------------------|
+| What is 2^10?                | `2^10`                        | 1024                      |
+| What is sin(pi / 2) + cos(0)? | `sin(pi / 2) + cos(0)`       | 2                         |
+| What is 2^10 + sqrt(144)?    | `2^10 + sqrt(144)`            | 1036                      |
