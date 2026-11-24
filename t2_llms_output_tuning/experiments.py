@@ -57,7 +57,7 @@ def v(label, params, model=None, repeat=1, full=False):
 
 EXPERIMENTS = {
     "gemini": [
-        {"todo": "TODO 1", "title": "temperature", "query": COFFEE, "variants": [
+        {"todo": "TODO 1", "title": "temperature", "query": COFFEE, "max_lines": 4, "variants": [
             v("temperature=0.0 (run 1)", {"generationConfig": {"temperature": 0.0}}),
             v("temperature=0.0 (run 2)", {"generationConfig": {"temperature": 0.0}}),
             v("temperature=2.0 (run 1)", {"generationConfig": {"temperature": 2.0}}),
@@ -242,7 +242,7 @@ def run_group(provider: str, group: dict, show_full: bool = False) -> None:
 
             # Drop the "=== RESPONSE ===" banners printed by the client and trim long output
             lines = [l for l in buffer.getvalue().splitlines() if not l.startswith("=" * 20)]
-            limit = MAX_LINES * (4 if variant["full"] else 1)
+            limit = group.get("max_lines", MAX_LINES) * (4 if variant["full"] else 1)
             if not message.content.strip() and not variant["full"]:
                 print("    <empty response: the token limit was reached while the model was still thinking>")
                 continue
